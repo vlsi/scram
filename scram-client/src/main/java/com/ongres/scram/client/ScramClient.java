@@ -290,6 +290,16 @@ public final class ScramClient implements MessageFlow {
   public interface FinalBuildStage {
 
     /**
+     * Sets the channel binding policy to determine how the client negotiates
+     * security layers with the server. By default is ALLOW.
+     *
+     * @param policy the channel binding policy (DISABLE, ALLOW, REQUIRE)
+     * @return {@code this} builder for use in a chained invocation
+     * @since 3.2.1
+     */
+    FinalBuildStage channelBindingPolicy(@NotNull ChannelBindingPolicy policy);
+
+    /**
      * If the client supports channel binding negotiation, this method sets the type and data used
      * for channel binding.
      *
@@ -381,6 +391,7 @@ public final class ScramClient implements MessageFlow {
     ScramMechanism selectedScramMechanism;
     Collection<String> scramMechanisms;
     Gs2CbindFlag channelBinding = Gs2CbindFlag.CLIENT_NOT;
+    ChannelBindingPolicy bindingPolicy = ChannelBindingPolicy.ALLOW;
     StringPreparation stringPreparation = StringPreparation.SASL_PREPARATION;
     int nonceLength = 24;
     String nonce;
@@ -402,6 +413,12 @@ public final class ScramClient implements MessageFlow {
     @Override
     public FinalBuildStage stringPreparation(@NotNull StringPreparation stringPreparation) {
       this.stringPreparation = checkNotNull(stringPreparation, "stringPreparation");
+      return this;
+    }
+
+    @Override
+    public FinalBuildStage channelBindingPolicy(@NotNull ChannelBindingPolicy policy) {
+      this.bindingPolicy = checkNotNull(policy, "policy");
       return this;
     }
 
@@ -498,6 +515,19 @@ public final class ScramClient implements MessageFlow {
       ScramMechanism mechanismNegotiaion = cbind != null ? cbind : noncbind;
       if (mechanismNegotiaion == null) {
         throw new IllegalArgumentException("Either a bare or plus mechanism must be present");
+      }
+
+      if (bindingPolicy == ChannelBindingPolicy.DISABLE) {
+        this.channelBinding = Gs2CbindFlag.CLIENT_NOT;
+      } else if (bindingPolicy == ChannelBindingPolicy.REQUIRE) {
+        if (cbind == null) {
+          throw new ChannelBindingException(
+              "Channel binding is required, but the server does not support -PLUS mechanisms");
+        }
+        if (channelBinding != Gs2CbindFlag.CLIENT_YES_SERVER_NOT) {
+          throw new ChannelBindingException(
+              "Channel binding is required, but no channel binding data or type was provided");
+        }
       }
 
       if (channelBinding == Gs2CbindFlag.CLIENT_YES_SERVER_NOT
